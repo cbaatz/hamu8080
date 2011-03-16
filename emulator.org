@@ -1,0 +1,15 @@
+* ACTIVE Intel 8080 emulator in Haskell
+:PROPERTIES:
+:CATEGORY: Emulator
+:END:
+** DONE Set up datatypes for 8080 (registers etc.)
+SCHEDULED: <2011-03-14 Mon> CLOSED: [2011-03-15 Tue 10:50]
+- State "DONE"       from "TODO"       [2011-03-15 Tue 10:50]
+** DONE Structure emulation
+CLOSED: [2011-03-16 Wed 01:07]
+- State "DONE"       from "TODO"       [2011-03-16 Wed 01:07]
+** TODO Implement 8080 opcodes
+SCHEDULED: <2011-03-16 Wed>
+** TODO Log process
+** Abstract out specific RAM type? (Computation / Computer parameterised)
+** Think about how input/ouput could be implemented
