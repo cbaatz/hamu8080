@@ -3,12 +3,13 @@ module Emulate8080.Types (
   Accumulator, ProgramCounter, StackPointer,
   Computation,
   Computer(..), mkComputer,
-  CPU(..), Register(..), RegisterPair(..),
+  CPU(..), Register(..), RegisterPair(..), Flag(..), getFlag, setFlag,
   RAM(..), VRAM(..)
 ) where
 
 import Control.Monad.State (State)
 import Data.Array.Unboxed
+import Data.Bits (testBit, setBit, clearBit)
 import Data.Word (Word8, Word16)
 import Text.Printf
 
@@ -54,9 +55,29 @@ data Register = A | B | C | D | E | H | L deriving (Show, Eq)
 data RegisterPair = BC | DE | HL deriving (Show, Eq)
 -- ^ The RegisterPair type is used to reference CPU register pairs
 
+data Flag = Sign | Zero | AuxCarry | Parity | Carry deriving (Show, Eq)
+-- ^ The Flag type is used to reference CPU flags.
+
+getFlag :: Flag -> Byte -> Bool
+-- ^ Flag bits: SZ0A0P1C (Sign, Zero, 0, Aux Carry, 0, Parity, 1, Carry)
+getFlag Sign byte = testBit byte 7
+getFlag Zero byte = testBit byte 6
+getFlag AuxCarry byte = testBit byte 4
+getFlag Parity byte = testBit byte 2
+getFlag Carry byte = testBit byte 0
+
+setFlag :: Flag -> Bool -> Byte -> Byte
+-- ^ Flag bits: SZ0A0P1C (Sign, Zero, 0, Aux Carry, 0, Parity, 1, Carry)
+setFlag Sign set byte = (if set then setBit else clearBit) byte 7
+setFlag Zero set byte = (if set then setBit else clearBit) byte 6
+setFlag AuxCarry set byte = (if set then setBit else clearBit) byte 4
+setFlag Parity set byte = (if set then setBit else clearBit) byte 2
+setFlag Carry set byte = (if set then setBit else clearBit) byte 0
+
 data CPU = CPU {
   cpuPC :: ProgramCounter,
   cpuSP :: StackPointer,
+  cpuPSW :: Byte,
   cpuA :: Accumulator,
   cpuB :: Byte,
   cpuC :: Byte,
@@ -67,12 +88,14 @@ data CPU = CPU {
   } deriving (Eq)
 
 mkCPU :: CPU
-mkCPU = CPU 0 0 0 0 0 0 0 0 0
+mkCPU = CPU 0 0 2 0 0 0 0 0 0 0
 
 instance Show CPU where
   show cpu = unlines [
     printf "PC:  0x%04X %5d" (cpuPC cpu) (cpuPC cpu),
     printf "SP:  0x%04X %5d" (cpuSP cpu) (cpuSP cpu),
+    printf "PSW: SZ0A0P1C",
+    printf "     %d%d%d%d%d%d%d%d" (f 7) (f 6) (f 5) (f 4) (f 3) (f 2) (f 1) (f 0),
     printf "A:   0x%02X   %5d" (cpuA cpu) (cpuA cpu),
     printf "B:   0x%02X   %5d" (cpuB cpu) (cpuB cpu),
     printf "C:   0x%02X   %5d" (cpuC cpu) (cpuC cpu),
@@ -80,6 +103,7 @@ instance Show CPU where
     printf "E:   0x%02X   %5d" (cpuE cpu) (cpuE cpu),
     printf "H:   0x%02X   %5d" (cpuH cpu) (cpuH cpu),
     printf "L:   0x%02X   %5d" (cpuL cpu) (cpuL cpu)]
+    where f bit = if testBit (cpuPSW cpu) bit then 1 else 0 :: Int
 
 --------------------------------------------------------------------------------
 -- RAM

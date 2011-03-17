@@ -12,7 +12,9 @@ import Emulate8080.Compute (runComputer, loadProgram)
 
 main = do
   let computer = mkComputer 0x01FF
-      computer' = loadProgram [0x06, 12, 0x3E, 23, 0x80] computer
+      computer' = loadProgram [0x06, 0x10, 0x0E, 0xA0,
+                               0x16, 0x20, 0x1E, 0xF0,
+                               0x79, 0x93, 0x4F, 0x78, 0x9A, 0x47] computer
       result = runComputer computer'
   print result
   return ()
