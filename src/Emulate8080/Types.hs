@@ -1,9 +1,9 @@
 module Emulate8080.Types (
-  Address, Byte, OpCode,
+  Address, Byte, OpCode, bytesToAddress,
   Accumulator, ProgramCounter, StackPointer,
   Computation,
   Computer(..), mkComputer,
-  CPU(..), Register(..),
+  CPU(..), Register(..), RegisterPair(..),
   RAM(..), VRAM(..)
 ) where
 
@@ -15,6 +15,10 @@ import Text.Printf
 type Address = Word16
 type Byte = Word8
 type OpCode = Byte
+
+-- TODO: Cleaner way?
+bytesToAddress :: Byte -> Byte -> Address
+bytesToAddress low high = fromIntegral $ (toInteger low) + 0x0100 * (toInteger high)
 
 type Accumulator = Byte
 type ProgramCounter = Address
@@ -47,6 +51,9 @@ instance Show Computer where
 data Register = A | B | C | D | E | H | L deriving (Show, Eq)
 -- ^ The Register type is used to reference CPU registers
 
+data RegisterPair = BC | DE | HL deriving (Show, Eq)
+-- ^ The RegisterPair type is used to reference CPU register pairs
+
 data CPU = CPU {
   cpuPC :: ProgramCounter,
   cpuSP :: StackPointer,
@@ -68,11 +75,11 @@ instance Show CPU where
     printf "SP:  0x%04X %5d" (cpuSP cpu) (cpuSP cpu),
     printf "A:   0x%02X   %5d" (cpuA cpu) (cpuA cpu),
     printf "B:   0x%02X   %5d" (cpuB cpu) (cpuB cpu),
-    printf "C:   0x%02X   %5d" (cpuB cpu) (cpuB cpu),
-    printf "D:   0x%02X   %5d" (cpuB cpu) (cpuB cpu),
-    printf "E:   0x%02X   %5d" (cpuB cpu) (cpuB cpu),
-    printf "H:   0x%02X   %5d" (cpuB cpu) (cpuB cpu),
-    printf "L:   0x%02X   %5d" (cpuB cpu) (cpuB cpu)]
+    printf "C:   0x%02X   %5d" (cpuC cpu) (cpuC cpu),
+    printf "D:   0x%02X   %5d" (cpuD cpu) (cpuD cpu),
+    printf "E:   0x%02X   %5d" (cpuE cpu) (cpuE cpu),
+    printf "H:   0x%02X   %5d" (cpuH cpu) (cpuH cpu),
+    printf "L:   0x%02X   %5d" (cpuL cpu) (cpuL cpu)]
 
 --------------------------------------------------------------------------------
 -- RAM
@@ -83,6 +90,7 @@ class RAM m where
   bytes :: m -> [Byte]
   getByte :: Address -> m -> Byte
   putByte :: Address -> Byte -> m -> m
+  putBytes :: Address -> [Byte] -> m -> m
 
 newtype VRAM = VRAM (UArray Address Byte) deriving (Eq)
 
@@ -93,6 +101,7 @@ instance RAM VRAM where
   bytes (VRAM mem) = elems mem
   getByte addr (VRAM mem) = mem ! addr
   putByte addr byte (VRAM mem) = VRAM (mem // [(addr, byte)])
+  putBytes addr bytes (VRAM mem) = VRAM (mem // zip (iterate (+1) addr) bytes)
 
 box :: Int -> [a] -> [[a]]
 box i ls = take i ls : if length ls > i then box i (drop i ls) else []
