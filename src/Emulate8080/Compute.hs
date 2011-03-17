@@ -2,14 +2,14 @@ module Emulate8080.Compute (
   runComputer, loadProgram, addc
   ) where
 
-import Control.Monad (liftM2, liftM3)
-import Data.Bits (shift, complement, testBit)
+import Control.Monad (liftM, liftM2, liftM3)
+import Data.Bits (shift, complement, rotate, testBit, (.&.), (.|.), xor)
 import Control.Monad.State (execState, gets, modify, when, unless)
 
 import Emulate8080.Types
 
-loadProgram :: [Byte] -> Computer -> Computer
-loadProgram program (Computer c m) = Computer c (putBytes 0x000 program m)
+loadProgram :: Address -> [Byte] -> Computer -> Computer
+loadProgram addr program (Computer c m) = Computer c (putBytes addr program m)
 
 runComputer :: Computer -> Computer
 runComputer = execState process
@@ -55,6 +55,8 @@ getReg H = gets $ cpuH . compCPU
 getReg L = gets $ cpuL . compCPU
 
 getRegPair :: RegisterPair -> Computation Address
+getRegPair SP = gets $ cpuSP . compCPU
+getRegPair PSW = liftM2 bytesToAddress (getReg A) (gets $ cpuPSW . compCPU)
 getRegPair BC = liftM2 bytesToAddress (getReg C) (getReg B)
 getRegPair DE = liftM2 bytesToAddress (getReg E) (getReg D)
 getRegPair HL = liftM2 bytesToAddress (getReg L) (getReg H)
@@ -113,13 +115,18 @@ continue = return True
 parityBit :: Byte -> Bool
 parityBit byte = even (sum [if testBit byte i then 1 else 0 | i <- [0..7]])
 
-setResult :: (Byte, Bool) -> Computation ()
-setResult (byte, carry) = do
-  setReg A byte
+setFlags :: (Byte, Bool) -> Computation ()
+setFlags (byte, carry) = do
   setF Sign (testBit byte 7)
   setF Zero (byte == 0)
   setF Parity (parityBit byte)
   setF Carry carry
+
+setResult :: Byte -> Computation ()
+setResult byte = setResultC (byte, False)
+
+setResultC :: (Byte, Bool) -> Computation ()
+setResultC (byte, carry) = setFlags (byte, carry) >> setReg A byte
 
 add :: Byte -> Byte -> (Byte, Bool)
 add a b = addc False a b
@@ -140,6 +147,7 @@ subb bin a b = (sum, not carry)
 --------------------------------------------------------------------------------
 -- Operations
 --------------------------------------------------------------------------------
+-- See http://www.pastraiser.com/cpu/i8080/i8080_opcodes.html
 -- Direct addressing: LDA A, [aaaa]
 -- Indexed addressing: MOV B, [HL]
 -- Immediate addressing: MVI B, 37h
@@ -238,41 +246,114 @@ doOp 0x7D = setReg A =<< getReg L -- MOV A, L
 doOp 0x7E = setReg A =<< getMem =<< getRegPair HL -- MOV A, [HL]
 doOp 0x7F = setReg A =<< getReg A -- MOV A, A
 
-doOp 0x80 = liftM2 add (getReg A) (getReg B) >>= setResult -- ADD A, B
-doOp 0x81 = liftM2 add (getReg A) (getReg C) >>= setResult -- ADD A, C
-doOp 0x82 = liftM2 add (getReg A) (getReg D) >>= setResult -- ADD A, D
-doOp 0x83 = liftM2 add (getReg A) (getReg E) >>= setResult -- ADD A, E
-doOp 0x84 = liftM2 add (getReg A) (getReg H) >>= setResult -- ADD A, H
-doOp 0x85 = liftM2 add (getReg A) (getReg L) >>= setResult -- ADD A, L
-doOp 0x86 = liftM2 add (getReg A) (getRegPair HL >>= getMem) >>= setResult -- ADD A, [HL]
-doOp 0x87 = liftM2 add (getReg A) (getReg A) >>= setResult -- ADD A, A
+doOp 0x80 = liftM2 add (getReg A) (getReg B) >>= setResultC -- ADD A, B
+doOp 0x81 = liftM2 add (getReg A) (getReg C) >>= setResultC -- ADD A, C
+doOp 0x82 = liftM2 add (getReg A) (getReg D) >>= setResultC -- ADD A, D
+doOp 0x83 = liftM2 add (getReg A) (getReg E) >>= setResultC -- ADD A, E
+doOp 0x84 = liftM2 add (getReg A) (getReg H) >>= setResultC -- ADD A, H
+doOp 0x85 = liftM2 add (getReg A) (getReg L) >>= setResultC -- ADD A, L
+doOp 0x86 = liftM2 add (getReg A) (getRegPair HL >>= getMem) >>= setResultC -- ADD A, [HL]
+doOp 0x87 = liftM2 add (getReg A) (getReg A) >>= setResultC -- ADD A, A
 
-doOp 0x88 = liftM3 addc (getF Carry) (getReg A) (getReg B) >>= setResult -- ADC A, B
-doOp 0x89 = liftM3 addc (getF Carry) (getReg A) (getReg C) >>= setResult -- ADC A, C
-doOp 0x8A = liftM3 addc (getF Carry) (getReg A) (getReg D) >>= setResult -- ADC A, D
-doOp 0x8B = liftM3 addc (getF Carry) (getReg A) (getReg E) >>= setResult -- ADC A, E
-doOp 0x8C = liftM3 addc (getF Carry) (getReg A) (getReg H) >>= setResult -- ADC A, H
-doOp 0x8D = liftM3 addc (getF Carry) (getReg A) (getReg L) >>= setResult -- ADC A, L
-doOp 0x8E = liftM3 addc (getF Carry) (getReg A) (getRegPair HL >>= getMem) >>= setResult -- ADC A, [HL]
-doOp 0x8F = liftM3 addc (getF Carry) (getReg A) (getReg A) >>= setResult -- ADC A, A
+doOp 0x88 = liftM3 addc (getF Carry) (getReg A) (getReg B) >>= setResultC -- ADC A, B
+doOp 0x89 = liftM3 addc (getF Carry) (getReg A) (getReg C) >>= setResultC -- ADC A, C
+doOp 0x8A = liftM3 addc (getF Carry) (getReg A) (getReg D) >>= setResultC -- ADC A, D
+doOp 0x8B = liftM3 addc (getF Carry) (getReg A) (getReg E) >>= setResultC -- ADC A, E
+doOp 0x8C = liftM3 addc (getF Carry) (getReg A) (getReg H) >>= setResultC -- ADC A, H
+doOp 0x8D = liftM3 addc (getF Carry) (getReg A) (getReg L) >>= setResultC -- ADC A, L
+doOp 0x8E = liftM3 addc (getF Carry) (getReg A) (getRegPair HL >>= getMem) >>= setResultC -- ADC A, [HL]
+doOp 0x8F = liftM3 addc (getF Carry) (getReg A) (getReg A) >>= setResultC -- ADC A, A
 
-doOp 0x90 = liftM2 sub (getReg A) (getReg B) >>= setResult -- SUB A, B
-doOp 0x91 = liftM2 sub (getReg A) (getReg C) >>= setResult -- SUB A, C
-doOp 0x92 = liftM2 sub (getReg A) (getReg D) >>= setResult -- SUB A, D
-doOp 0x93 = liftM2 sub (getReg A) (getReg E) >>= setResult -- SUB A, E
-doOp 0x94 = liftM2 sub (getReg A) (getReg H) >>= setResult -- SUB A, H
-doOp 0x95 = liftM2 sub (getReg A) (getReg L) >>= setResult -- SUB A, L
-doOp 0x96 = liftM2 sub (getReg L) (getRegPair HL >>= getMem) >>= setResult -- SUB A, [HL]
-doOp 0x97 = liftM2 sub (getReg A) (getReg A) >>= setResult -- SUB A, A
+doOp 0x90 = liftM2 sub (getReg A) (getReg B) >>= setResultC -- SUB A, B
+doOp 0x91 = liftM2 sub (getReg A) (getReg C) >>= setResultC -- SUB A, C
+doOp 0x92 = liftM2 sub (getReg A) (getReg D) >>= setResultC -- SUB A, D
+doOp 0x93 = liftM2 sub (getReg A) (getReg E) >>= setResultC -- SUB A, E
+doOp 0x94 = liftM2 sub (getReg A) (getReg H) >>= setResultC -- SUB A, H
+doOp 0x95 = liftM2 sub (getReg A) (getReg L) >>= setResultC -- SUB A, L
+doOp 0x96 = liftM2 sub (getReg L) (getRegPair HL >>= getMem) >>= setResultC -- SUB A, [HL]
+doOp 0x97 = liftM2 sub (getReg A) (getReg A) >>= setResultC -- SUB A, A
 
-doOp 0x98 = liftM3 subb (getF Carry) (getReg A) (getReg B) >>= setResult -- SBB A, B
-doOp 0x99 = liftM3 subb (getF Carry) (getReg A) (getReg C) >>= setResult -- SBB A, C
-doOp 0x9A = liftM3 subb (getF Carry) (getReg A) (getReg D) >>= setResult -- SBB A, D
-doOp 0x9B = liftM3 subb (getF Carry) (getReg A) (getReg E) >>= setResult -- SBB A, E
-doOp 0x9C = liftM3 subb (getF Carry) (getReg A) (getReg H) >>= setResult -- SBB A, H
-doOp 0x9D = liftM3 subb (getF Carry) (getReg A) (getReg L) >>= setResult -- SBB A, L
-doOp 0x9E = liftM3 subb (getF Carry) (getReg B) (getRegPair HL >>= getMem) >>= setResult -- SBB A, B
-doOp 0x9F = liftM3 subb (getF Carry) (getReg A) (getReg A) >>= setResult -- SBB A, A
+doOp 0x98 = liftM3 subb (getF Carry) (getReg A) (getReg B) >>= setResultC -- SBB A, B
+doOp 0x99 = liftM3 subb (getF Carry) (getReg A) (getReg C) >>= setResultC -- SBB A, C
+doOp 0x9A = liftM3 subb (getF Carry) (getReg A) (getReg D) >>= setResultC -- SBB A, D
+doOp 0x9B = liftM3 subb (getF Carry) (getReg A) (getReg E) >>= setResultC -- SBB A, E
+doOp 0x9C = liftM3 subb (getF Carry) (getReg A) (getReg H) >>= setResultC -- SBB A, H
+doOp 0x9D = liftM3 subb (getF Carry) (getReg A) (getReg L) >>= setResultC -- SBB A, L
+doOp 0x9E = liftM3 subb (getF Carry) (getReg B) (getRegPair HL >>= getMem) >>= setResultC -- SBB A, B
+doOp 0x9F = liftM3 subb (getF Carry) (getReg A) (getReg A) >>= setResultC -- SBB A, A
+
+doOp 0xA0 = liftM2 (.&.) (getReg A) (getReg B) >>= setResult -- AND A, B
+doOp 0xA1 = liftM2 (.&.) (getReg A) (getReg C) >>= setResult -- AND A, C
+doOp 0xA2 = liftM2 (.&.) (getReg A) (getReg D) >>= setResult -- AND A, D
+doOp 0xA3 = liftM2 (.&.) (getReg A) (getReg E) >>= setResult -- AND A, E
+doOp 0xA4 = liftM2 (.&.) (getReg A) (getReg H) >>= setResult -- AND A, H
+doOp 0xA5 = liftM2 (.&.) (getReg A) (getReg L) >>= setResult -- AND A, L
+doOp 0xA6 = liftM2 (.&.) (getReg A) (getRegPair HL >>= getMem) >>= setResult -- AND A, [HL]
+doOp 0xA7 = liftM2 (.&.) (getReg A) (getReg A) >>= setResult -- AND A, A
+
+doOp 0xA8 = liftM2 xor (getReg A) (getReg B) >>= setResult -- XOR A, B
+doOp 0xA9 = liftM2 xor (getReg A) (getReg C) >>= setResult -- XOR A, C
+doOp 0xAA = liftM2 xor (getReg A) (getReg D) >>= setResult -- XOR A, D
+doOp 0xAB = liftM2 xor (getReg A) (getReg E) >>= setResult -- XOR A, E
+doOp 0xAC = liftM2 xor (getReg A) (getReg H) >>= setResult -- XOR A, H
+doOp 0xAD = liftM2 xor (getReg A) (getReg L) >>= setResult -- XOR A, L
+doOp 0xAE = liftM2 xor (getReg A) (getRegPair HL >>= getMem) >>= setResult -- XOR A, [HL]
+doOp 0xAF = liftM2 xor (getReg A) (getReg A) >>= setResult -- XOR A, A
+
+doOp 0xB0 = liftM2 (.|.) (getReg A) (getReg B) >>= setResult -- OR A, B
+doOp 0xB1 = liftM2 (.|.) (getReg A) (getReg C) >>= setResult -- OR A, C
+doOp 0xB2 = liftM2 (.|.) (getReg A) (getReg D) >>= setResult -- OR A, D
+doOp 0xB3 = liftM2 (.|.) (getReg A) (getReg E) >>= setResult -- OR A, E
+doOp 0xB4 = liftM2 (.|.) (getReg A) (getReg H) >>= setResult -- OR A, H
+doOp 0xB5 = liftM2 (.|.) (getReg A) (getReg L) >>= setResult -- OR A, L
+doOp 0xB6 = liftM2 (.|.) (getReg A) (getRegPair HL >>= getMem) >>= setResult -- OR A, [HL]
+doOp 0xB7 = liftM2 (.|.) (getReg A) (getReg A) >>= setResult -- OR A, A
+
+doOp 0xB8 = liftM2 sub (getReg A) (getReg B) >>= setFlags -- CMP A, B
+doOp 0xB9 = liftM2 sub (getReg A) (getReg C) >>= setFlags -- CMP A, C
+doOp 0xBA = liftM2 sub (getReg A) (getReg D) >>= setFlags -- CMP A, D
+doOp 0xBB = liftM2 sub (getReg A) (getReg E) >>= setFlags -- CMP A, E
+doOp 0xBC = liftM2 sub (getReg A) (getReg H) >>= setFlags -- CMP A, H
+doOp 0xBD = liftM2 sub (getReg A) (getReg L) >>= setFlags -- CMP A, L
+doOp 0xBE = liftM2 sub (getReg A) (getRegPair HL >>= getMem) >>= setFlags -- CMP A, [HL]
+doOp 0xBF = liftM2 sub (getReg A) (getReg A) >>= setFlags -- CMP A, A
+
+doOp 0xC6 = liftM2 add (getReg A) readNextByte >>= setResultC -- ADI A, xx
+doOp 0xCE = liftM3 addc (getF Carry) (getReg A) readNextByte >>= setResultC -- ACI A, xx
+doOp 0xD6 = liftM2 sub (getReg A) readNextByte >>= setResultC -- SUI A, xx
+doOp 0xDE = liftM3 subb (getF Carry) (getReg A) readNextByte >>= setResultC -- SBI A, xx
+doOp 0xE6 = liftM2 (.&.) (getReg A) readNextByte >>= setResult -- ANI A, xx
+doOp 0xEE = liftM2 xor (getReg A) readNextByte >>= setResult -- XRI A, xx
+doOp 0xF6 = liftM2 (.|.) (getReg A) readNextByte >>= setResult -- ORI A, xx
+doOp 0xFE = liftM2 sub (getReg A) readNextByte >>= setFlags -- CPI A, xx
+
+doOp 0x27 = return () -- TODO: DAA Decimal Adjust Accumulator
+doOp 0x2F = liftM complement (getReg A) >>= setReg A -- CMA Complement Accumulator
+
+doOp 0x04 = incr (getReg B) (setReg B) -- INR B
+doOp 0x05 = decr (getReg B) (setReg B) -- DCR B
+doOp 0x0C = incr (getReg C) (setReg C) -- INR C
+doOp 0x0D = decr (getReg C) (setReg C) -- DCR C
+doOp 0x14 = incr (getReg D) (setReg D) -- INR D
+doOp 0x15 = decr (getReg D) (setReg D) -- DCR D
+doOp 0x1C = incr (getReg E) (setReg E) -- INR E
+doOp 0x1D = decr (getReg E) (setReg E) -- DCR E
+doOp 0x34 = incr (getRegPair HL >>= getMem) (\b -> getRegPair HL >>= flip setMem b) -- INR [HL]
+doOp 0x35 = decr (getRegPair HL >>= getMem) (\b -> getRegPair HL >>= flip setMem b) -- DCR [HL]
+doOp 0x3C = incr (getReg A) (setReg A) -- INR A
+doOp 0x3D = decr (getReg A) (setReg A) -- DCR A
+
+-- TODO
+-- doOp 0x07 = liftM (flip rotate 1) (getReg A) >>= setReg A -- RLC Rotate Accumulator left
+-- doOp 0x0F = liftM (flip rotate -1) (getReg A) >>= setReg A -- RRC Rotate Accumulator right
+-- doOp 0x17 = liftM (flip rotate 1) (getReg A) >>= setReg A -- RAL Rotate Accumulator left through carry
+-- doOp 0x1F = liftM (flip rotate -1) (getReg A) >>= setReg A -- RAR Rotate Accumulator right through carry
 
 doOp 0x00 = return () -- NOP
 doOp x = return () -- NOP* Catch all undefined
+
+incr :: Computation Byte -> (Byte -> Computation ()) -> Computation ()
+incr getByte setByte = liftM (+1) getByte >>= \b -> setFlags (b, False) >> setByte b
+
+decr :: Computation Byte -> (Byte -> Computation ()) -> Computation ()
+decr getByte setByte = liftM (subtract 1) getByte >>= \b -> setFlags (b, False) >> setByte b

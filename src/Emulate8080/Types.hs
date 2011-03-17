@@ -52,7 +52,7 @@ instance Show Computer where
 data Register = A | B | C | D | E | H | L deriving (Show, Eq)
 -- ^ The Register type is used to reference CPU registers
 
-data RegisterPair = BC | DE | HL deriving (Show, Eq)
+data RegisterPair = SP | PSW | BC | DE | HL deriving (Show, Eq)
 -- ^ The RegisterPair type is used to reference CPU register pairs
 
 data Flag = Sign | Zero | AuxCarry | Parity | Carry deriving (Show, Eq)
