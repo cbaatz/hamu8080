@@ -1,8 +1,6 @@
-Name:                emulate8080
-Version:             0.0.1
-Synopsis:            Intel 8080 bytecode emulator
--- Description:
--- The license under which the package is released.
+Name:                Hamu8080
+Version:             0.1.0
+Synopsis:            Intel 8080 machine code emulator
 License:             BSD3
 License-file:        LICENSE
 Author:              Carl Baatz
@@ -12,11 +10,10 @@ Build-type:          Simple
 
 Cabal-version:       >=1.2
 
-Executable emulate8080
+Executable hamu8080
    Main-is:		Main.hs
    hs-source-dirs: 	src
    Build-depends:   	base >= 4,
                         mtl >= 2.0.1.0,
                         array >= 0.3.0.2
--- Build-depends:
--- Other-modules:
+  ghc-options:	  	-Wall -O

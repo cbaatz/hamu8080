@@ -1,4 +1,4 @@
-module Emulate8080.Types (
+module Hamu8080.Types (
   Address, Byte, OpCode, bytesToAddress, addressToBytes,
   Accumulator, ProgramCounter, StackPointer,
   Computer(..), mkComputer,
@@ -121,13 +121,13 @@ class RAM m where
 newtype VRAM = VRAM (UArray Address Byte) deriving (Eq)
 
 mkRAM :: Word16 -> VRAM
-mkRAM size = VRAM $ listArray (0x0000, size) [0 | i <- [0x0000..size]]
+mkRAM size = VRAM $ listArray (0x0000, size) [0 | _ <- [0x0000..size]]
 
 instance RAM VRAM where
   bytes (VRAM mem) = elems mem
   getByte addr (VRAM mem) = mem ! addr
-  putByte addr byte (VRAM mem) = VRAM (mem // [(addr, byte)])
-  putBytes addr bytes (VRAM mem) = VRAM (mem // zip (iterate (+1) addr) bytes)
+  putByte addr b (VRAM mem) = VRAM (mem // [(addr, b)])
+  putBytes addr bs (VRAM mem) = VRAM (mem // zip (iterate (+1) addr) bs)
 
 box :: Int -> [a] -> [[a]]
 box i ls = take i ls : if length ls > i then box i (drop i ls) else []

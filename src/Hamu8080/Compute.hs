@@ -1,14 +1,14 @@
-module Emulate8080.Compute (
+module Hamu8080.Compute (
   runComputer, loadProgram
   ) where
 
-import Control.Monad.State (State)
 import Control.Monad (liftM, liftM2, liftM3)
 import Data.Bits (complement, shift, rotate, setBit, clearBit, testBit,
                   (.&.), (.|.), xor)
-import Control.Monad.State (execState, gets, modify, when, unless)
+import Control.Monad.State
+  (State, execState, gets, modify, when, unless)
 
-import Emulate8080.Types
+import Hamu8080.Types
 
 type Computation = State Computer
 
@@ -27,7 +27,7 @@ process = do
 
 halting :: Byte -> Bool
 halting 0x76 = True
-halting x = False
+halting _ = False
 
 --------------------------------------------------------------------------------
 -- Helper functions
@@ -80,7 +80,7 @@ setRegPair PSWA addr = setReg A l >> setReg PSW h
   where (l, h) = addressToBytes addr
 
 getF :: Flag -> Computation Bool
-getF x = gets $ (getFlag x) . cpuPSW . compCPU
+getF x = gets $ getFlag x . cpuPSW . compCPU
 
 setF :: Flag -> Bool -> Computation ()
 setF x set = modifyCPU $ \c -> c { cpuPSW = setFlag x set (cpuPSW c) }
@@ -108,12 +108,6 @@ readNextAddress = do
   high <- getRegPair PC >>= getMem
   return (bytesToAddress low high)
 
-halt :: Computation Bool
-halt = return False
-
-continue :: Computation Bool
-continue = return True
-
 --------------------------------------------------------------------------------
 -- Branching and stack helper functions
 --------------------------------------------------------------------------------
@@ -128,8 +122,8 @@ call :: Computation ()
 call = getRegPair PC >>= pushStack >> jmp
 
 pushStack :: Address -> Computation ()
-pushStack bytes = do
-  let (l, h) = addressToBytes bytes
+pushStack bs = do
+  let (l, h) = addressToBytes bs
   addr <- getRegPair SP
   setMem (addr - 1) h -- Store higher byte
   setMem (addr - 2) l -- Store lower byte
@@ -146,7 +140,7 @@ popStack = do
 --------------------------------------------------------------------------------
 
 parityBit :: Byte -> Bool
-parityBit byte = even (sum [if testBit byte i then 1 else 0 | i <- [0..7]])
+parityBit byte = even (sum [if testBit byte i then 1 else 0 | i <- [0..7]] :: Int)
 
 setFlags :: (Byte, Bool) -> Computation ()
 setFlags (byte, carry) = do
@@ -162,31 +156,31 @@ setResultC :: (Byte, Bool) -> Computation ()
 setResultC (byte, carry) = setFlags (byte, carry) >> setReg A byte
 
 add :: Byte -> Byte -> (Byte, Bool)
-add a b = addc False a b
+add = addc False
 
 addc :: Bool -> Byte -> Byte -> (Byte, Bool)
 -- ^ Add with carry
-addc cin a b = (fromIntegral sum, sum > 0xFF)
-  where sum = (if cin then 1 else 0) + toInteger a + toInteger b
+addc cin a b = (fromIntegral result, result > 0xFF)
+  where result = (if cin then 1 else 0) + toInteger a + toInteger b
 
 addxc :: Bool -> Address -> Address -> (Address, Bool)
 -- ^ Add with carry
-addxc cin a b = (fromIntegral sum, sum > 0xFFFF)
-  where sum = (if cin then 1 else 0) + toInteger a + toInteger b
+addxc cin a b = (fromIntegral result, result > 0xFFFF)
+  where result = (if cin then 1 else 0) + toInteger a + toInteger b
 
 sub :: Byte -> Byte -> (Byte, Bool)
-sub a b = subb False a b
+sub = subb False
 
 subb :: Bool -> Byte -> Byte -> (Byte, Bool)
 -- ^ Subtract with borrow
-subb bin a b = (sum, not carry)
-  where (sum, carry) = addc (not bin) a (complement b)
+subb bin a b = (result, not carry)
+  where (result, carry) = addc (not bin) a (complement b)
 
 incr :: Computation Byte -> (Byte -> Computation ()) -> Computation ()
-incr getByte setByte = liftM (+1) getByte >>= \b -> setFlags (b, False) >> setByte b
+incr getB setB = liftM (+1) getB >>= \b -> setFlags (b, False) >> setB b
 
 decr :: Computation Byte -> (Byte -> Computation ()) -> Computation ()
-decr getByte setByte = liftM (subtract 1) getByte >>= \b -> setFlags (b, False) >> setByte b
+decr getB setB = liftM (subtract 1) getB >>= \b -> setFlags (b, False) >> setB b
 
 --------------------------------------------------------------------------------
 -- Operations
@@ -376,11 +370,11 @@ doOp 0x27 = do -- DAA Decimal Adjust Accumulator
   ac <- getF AuxCarry
   c <- getF Carry
   let nibbleL = (0x0F .&. byte0)
-      (byte1, ac') = if (ac || nibbleL > 0x09)
+      (byte1, ac') = if ac || nibbleL > 0x09
                      then (byte0 + 0x06, nibbleL + 0x06 > 0x0F)
                      else (byte0, ac)
       nibbleH = (shift byte1 (-4))
-      (byte2, c') = if (c || nibbleH > 0x09)
+      (byte2, c') = if c || nibbleH > 0x09
                     then add byte1 0x60
                     else (byte1, c)
   setF AuxCarry ac'
@@ -456,20 +450,20 @@ doOp 0x3B = liftM (subtract 1) (getRegPair SP) >>= setRegPair SP -- DCX SP
 
 -- DAD
 doOp 0x09 = do -- DAD HL, BC
-  (sum, carry) <- liftM2 (addxc False) (getRegPair HL) (getRegPair BC)
-  setRegPair HL sum
+  (result, carry) <- liftM2 (addxc False) (getRegPair HL) (getRegPair BC)
+  setRegPair HL result
   setF Carry carry
 doOp 0x19 = do -- DAD HL, DE
-  (sum, carry) <- liftM2 (addxc False) (getRegPair HL) (getRegPair DE)
-  setRegPair HL sum
+  (result, carry) <- liftM2 (addxc False) (getRegPair HL) (getRegPair DE)
+  setRegPair HL result
   setF Carry carry
 doOp 0x29 = do -- DAD HL, HL
-  (sum, carry) <- liftM2 (addxc False) (getRegPair HL) (getRegPair HL)
-  setRegPair HL sum
+  (result, carry) <- liftM2 (addxc False) (getRegPair HL) (getRegPair HL)
+  setRegPair HL result
   setF Carry carry
 doOp 0x39 = do -- DAD HL, SP
-  (sum, carry) <- liftM2 (addxc False) (getRegPair HL) (getRegPair SP)
-  setRegPair HL sum
+  (result, carry) <- liftM2 (addxc False) (getRegPair HL) (getRegPair SP)
+  setRegPair HL result
   setF Carry carry
 
 doOp 0x22 = do -- SHLD [aaaa], HL Store HL Direct
@@ -501,33 +495,33 @@ doOp 0xC9 = ret -- RET
 doOp 0xC3 = jmp -- JMP aaaa
 doOp 0xCD = call -- CALL aaaa
 
-doOp 0xC0 = getF Zero >>= \z -> when (not z) ret -- RNZ
-doOp 0xC2 = getF Zero >>= \z -> when (not z) jmp -- JNZ
-doOp 0xC4 = getF Zero >>= \z -> when (not z) call -- CNZ
+doOp 0xC0 = getF Zero >>= \z -> unless z ret -- RNZ
+doOp 0xC2 = getF Zero >>= \z -> unless z jmp -- JNZ
+doOp 0xC4 = getF Zero >>= \z -> unless z call -- CNZ
 
 doOp 0xC8 = getF Zero >>= \z -> when z ret -- RZ
 doOp 0xCA = getF Zero >>= \z -> when z jmp -- JZ
 doOp 0xCC = getF Zero >>= \z -> when z call -- CZ
 
-doOp 0xD0 = getF Carry >>= \c -> when (not c) ret -- RNC
-doOp 0xD2 = getF Carry >>= \c -> when (not c) jmp -- JNC
-doOp 0xD4 = getF Carry >>= \c -> when (not c) call -- CNC
+doOp 0xD0 = getF Carry >>= \c -> unless c ret -- RNC
+doOp 0xD2 = getF Carry >>= \c -> unless c jmp -- JNC
+doOp 0xD4 = getF Carry >>= \c -> unless c call -- CNC
 
 doOp 0xD8 = getF Carry >>= \c -> when c ret -- RC
 doOp 0xDA = getF Carry >>= \c -> when c jmp -- JC
 doOp 0xDC = getF Carry >>= \c -> when c call -- CC
 
-doOp 0xE0 = getF Parity >>= \p -> when (not p) ret -- RPO
-doOp 0xE2 = getF Parity >>= \p -> when (not p) jmp -- JPO
-doOp 0xE4 = getF Parity >>= \p -> when (not p) call -- CPO
+doOp 0xE0 = getF Parity >>= \p -> unless p ret -- RPO
+doOp 0xE2 = getF Parity >>= \p -> unless p jmp -- JPO
+doOp 0xE4 = getF Parity >>= \p -> unless p call -- CPO
 
 doOp 0xE8 = getF Parity >>= \p -> when p ret -- RPE
 doOp 0xEA = getF Parity >>= \p -> when p jmp -- JPE
 doOp 0xEC = getF Parity >>= \p -> when p call -- CPE
 
-doOp 0xF0 = getF Sign >>= \s -> when (not s) ret -- RP
-doOp 0xF2 = getF Sign >>= \s -> when (not s) jmp -- JP
-doOp 0xF4 = getF Sign >>= \s -> when (not s) call -- CP
+doOp 0xF0 = getF Sign >>= \s -> unless s ret -- RP
+doOp 0xF2 = getF Sign >>= \s -> unless s jmp -- JP
+doOp 0xF4 = getF Sign >>= \s -> unless s call -- CP
 
 doOp 0xF8 = getF Sign >>= \s -> when s ret -- RM
 doOp 0xFA = getF Sign >>= \s -> when s jmp -- JM
@@ -557,4 +551,4 @@ doOp 0xFD = doOp 0xCD -- *CALL
 
 -- NOP
 doOp 0x00 = return () -- NOP
-doOp x = return () -- *NOP Catch all undefined
+doOp _ = return () -- *NOP Catch all undefined
