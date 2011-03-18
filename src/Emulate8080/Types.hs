@@ -1,5 +1,5 @@
 module Emulate8080.Types (
-  Address, Byte, OpCode, bytesToAddress,
+  Address, Byte, OpCode, bytesToAddress, addressToBytes,
   Accumulator, ProgramCounter, StackPointer,
   Computation,
   Computer(..), mkComputer,
@@ -9,7 +9,7 @@ module Emulate8080.Types (
 
 import Control.Monad.State (State)
 import Data.Array.Unboxed
-import Data.Bits (testBit, setBit, clearBit)
+import Data.Bits (testBit, setBit, clearBit, (.&.), shift)
 import Data.Word (Word8, Word16)
 import Text.Printf
 
@@ -17,9 +17,13 @@ type Address = Word16
 type Byte = Word8
 type OpCode = Byte
 
--- TODO: Cleaner way?
 bytesToAddress :: Byte -> Byte -> Address
 bytesToAddress low high = fromIntegral $ (toInteger low) + 0x0100 * (toInteger high)
+
+addressToBytes :: Address -> (Byte, Byte)
+addressToBytes addr = (low, high)
+  where low = fromIntegral $ addr .&. 0x00FF
+        high = fromIntegral $ shift (addr .&. 0xFF00) 8
 
 type Accumulator = Byte
 type ProgramCounter = Address
@@ -49,10 +53,10 @@ instance Show Computer where
 -- CPU
 --------------------------------------------------------------------------------
 
-data Register = A | B | C | D | E | H | L deriving (Show, Eq)
+data Register = PSW | A | B | C | D | E | H | L deriving (Show, Eq)
 -- ^ The Register type is used to reference CPU registers
 
-data RegisterPair = SP | PSW | BC | DE | HL deriving (Show, Eq)
+data RegisterPair = PC | SP | BC | DE | HL | PSWA deriving (Show, Eq)
 -- ^ The RegisterPair type is used to reference CPU register pairs
 
 data Flag = Sign | Zero | AuxCarry | Parity | Carry deriving (Show, Eq)
@@ -78,6 +82,7 @@ data CPU = CPU {
   cpuPC :: ProgramCounter,
   cpuSP :: StackPointer,
   cpuPSW :: Byte,
+  cpuINTE :: Bool,
   cpuA :: Accumulator,
   cpuB :: Byte,
   cpuC :: Byte,
@@ -88,21 +93,22 @@ data CPU = CPU {
   } deriving (Eq)
 
 mkCPU :: CPU
-mkCPU = CPU 0 0 2 0 0 0 0 0 0 0
+mkCPU = CPU 0 0x0200 2 False 0 0 0 0 0 0 0
 
 instance Show CPU where
   show cpu = unlines [
-    printf "PC:  0x%04X %5d" (cpuPC cpu) (cpuPC cpu),
-    printf "SP:  0x%04X %5d" (cpuSP cpu) (cpuSP cpu),
-    printf "PSW: SZ0A0P1C",
-    printf "     %d%d%d%d%d%d%d%d" (f 7) (f 6) (f 5) (f 4) (f 3) (f 2) (f 1) (f 0),
-    printf "A:   0x%02X   %5d" (cpuA cpu) (cpuA cpu),
-    printf "B:   0x%02X   %5d" (cpuB cpu) (cpuB cpu),
-    printf "C:   0x%02X   %5d" (cpuC cpu) (cpuC cpu),
-    printf "D:   0x%02X   %5d" (cpuD cpu) (cpuD cpu),
-    printf "E:   0x%02X   %5d" (cpuE cpu) (cpuE cpu),
-    printf "H:   0x%02X   %5d" (cpuH cpu) (cpuH cpu),
-    printf "L:   0x%02X   %5d" (cpuL cpu) (cpuL cpu)]
+    printf "PC:   0x%04X %5d" (cpuPC cpu) (cpuPC cpu),
+    printf "SP:   0x%04X %5d" (cpuSP cpu) (cpuSP cpu),
+    printf "PSW:  SZ0A0P1C",
+    printf "      %d%d%d%d%d%d%d%d" (f 7) (f 6) (f 5) (f 4) (f 3) (f 2) (f 1) (f 0),
+    printf "INTE: %s" (show (cpuINTE cpu)),
+    printf "A:    0x%02X   %5d" (cpuA cpu) (cpuA cpu),
+    printf "B:    0x%02X   %5d" (cpuB cpu) (cpuB cpu),
+    printf "C:    0x%02X   %5d" (cpuC cpu) (cpuC cpu),
+    printf "D:    0x%02X   %5d" (cpuD cpu) (cpuD cpu),
+    printf "E:    0x%02X   %5d" (cpuE cpu) (cpuE cpu),
+    printf "H:    0x%02X   %5d" (cpuH cpu) (cpuH cpu),
+    printf "L:    0x%02X   %5d" (cpuL cpu) (cpuL cpu)]
     where f bit = if testBit (cpuPSW cpu) bit then 1 else 0 :: Int
 
 --------------------------------------------------------------------------------
