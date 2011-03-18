@@ -4,7 +4,7 @@ module Emulate8080.Compute (
 
 import Control.Monad.State (State)
 import Control.Monad (liftM, liftM2, liftM3)
-import Data.Bits (shift, complement, rotate, setBit, clearBit, testBit,
+import Data.Bits (complement, shift, rotate, setBit, clearBit, testBit,
                   (.&.), (.|.), xor)
 import Control.Monad.State (execState, gets, modify, when, unless)
 
@@ -371,7 +371,20 @@ doOp 0xEE = liftM2 xor (getReg A) readNextByte >>= setResult -- XRI A, xx
 doOp 0xF6 = liftM2 (.|.) (getReg A) readNextByte >>= setResult -- ORI A, xx
 doOp 0xFE = liftM2 sub (getReg A) readNextByte >>= setFlags -- CPI A, xx
 
-doOp 0x27 = return () -- TODO: DAA Decimal Adjust Accumulator
+doOp 0x27 = do -- DAA Decimal Adjust Accumulator
+  byte0 <- getReg A
+  ac <- getF AuxCarry
+  c <- getF Carry
+  let nibbleL = (0x0F .&. byte0)
+      (byte1, ac') = if (ac || nibbleL > 0x09)
+                     then (byte0 + 0x06, nibbleL + 0x06 > 0x0F)
+                     else (byte0, ac)
+      nibbleH = (shift byte1 (-4))
+      (byte2, c') = if (c || nibbleH > 0x09)
+                    then add byte1 0x60
+                    else (byte1, c)
+  setF AuxCarry ac'
+  setResultC (byte2, c')
 doOp 0x2F = liftM complement (getReg A) >>= setReg A -- CMA Complement Accumulator
 
 -- INR and DCR

@@ -10,8 +10,7 @@ import Emulate8080.Compute (runComputer, loadProgram)
 -- 4. Return computer (CPU and RAM state)
 
 main = do
-  let program = [0x3E, 134, 0x06, 3, 0x0E, 6, 0xB8, 0x04, 0x37, 0x1F,
-                 0xC5, 0xC5, 0xE3, 0xC1, 0xFB, 0x76]
+  let program = [0x3E, 0x9B, 0x27, 0x76]
       computer = loadProgram 0x0000 program $ mkComputer 0x01FF
       result = runComputer computer
   print result
