@@ -1,13 +1,11 @@
 module Emulate8080.Types (
   Address, Byte, OpCode, bytesToAddress, addressToBytes,
   Accumulator, ProgramCounter, StackPointer,
-  Computation,
   Computer(..), mkComputer,
   CPU(..), Register(..), RegisterPair(..), Flag(..), getFlag, setFlag,
   RAM(..), VRAM(..)
 ) where
 
-import Control.Monad.State (State)
 import Data.Array.Unboxed
 import Data.Bits (testBit, setBit, clearBit, (.&.), shift)
 import Data.Word (Word8, Word16)
@@ -23,13 +21,11 @@ bytesToAddress low high = fromIntegral $ (toInteger low) + 0x0100 * (toInteger h
 addressToBytes :: Address -> (Byte, Byte)
 addressToBytes addr = (low, high)
   where low = fromIntegral $ addr .&. 0x00FF
-        high = fromIntegral $ shift (addr .&. 0xFF00) 8
+        high = fromIntegral $ shift (addr .&. 0xFF00) (-8)
 
 type Accumulator = Byte
 type ProgramCounter = Address
 type StackPointer = Address
-
-type Computation = State Computer
 
 --------------------------------------------------------------------------------
 -- Computer

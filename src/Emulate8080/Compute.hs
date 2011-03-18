@@ -2,12 +2,15 @@ module Emulate8080.Compute (
   runComputer, loadProgram
   ) where
 
+import Control.Monad.State (State)
 import Control.Monad (liftM, liftM2, liftM3)
 import Data.Bits (shift, complement, rotate, setBit, clearBit, testBit,
                   (.&.), (.|.), xor)
 import Control.Monad.State (execState, gets, modify, when, unless)
 
 import Emulate8080.Types
+
+type Computation = State Computer
 
 loadProgram :: Address -> [Byte] -> Computer -> Computer
 loadProgram addr program (Computer c m) = Computer c (putBytes addr program m)
