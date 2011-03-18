@@ -2,16 +2,16 @@
 
 Hamu 8080 is a simple Intel 8080 machine code emulator written in
 Haskell intended only for instruction and fun. Inspiration was Charles
-Petzold's excellent [[http://www.charlespetzold.com/code/][CODE -- /The Hidden Language of Computer Hardware
-and Software/]]. Since the emulator doesn't support input/output it
-can't be of any "serious" use. Also, programs are loaded as lists of
-pure machine codes -- there isn't even an assembly Haskell DSL. All
+Petzold's excellent [[http://www.charlespetzold.com/code/][CODE]] -- /The Hidden Language of Computer Hardware
+and Software/. Since the emulator doesn't support input/output it
+can't be of any "serious" use. Programs are loaded as lists of pure
+machine codes; there's not even an assembly-like Haskell DSL. All
 instructions apart from OUT/IN have been implemented however (but not
 rigorously tested).
 
 ** Possible Extensions
-*** Input/output in some form
-*** Simple assembler
-*** Load program from file
-*** Add log to computation
-*** Abstract out specific RAM type
+- Input/output in some form
+- Simple assembler
+- Load program from file
+- Add log to computation
+- Abstract out specific RAM type
